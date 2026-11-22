@@ -60,6 +60,10 @@ function NotGrid:OnEnable()
    -- Combat state tracking
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnEnterCombat")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnLeaveCombat")
+	-- Populate auras already present when the addon is enabled or reloaded.
+	for unitid in pairs(self.UnitFrames) do
+		self:UNIT_AURA(unitid)
+	end
 end
 
 ----------------------
@@ -337,17 +341,56 @@ end
 -- UNIT_AURA --
 ---------------
 
+local debuffTypeOptions = {
+	Magic = "debuffshowmagic", Curse = "debuffshowcurse",
+	Disease = "debuffshowdisease", Poison = "debuffshowpoison",
+}
+
+local previewDebuffs = {
+	{texture = "Interface\\Icons\\Spell_Frost_FrostNova", type = "Magic", stacks = 2},
+	{texture = "Interface\\Icons\\Ability_Poisons", type = "Poison"},
+	{texture = "Interface\\Icons\\Spell_Shadow_CurseOfTounges", type = "Curse"},
+	{texture = "Interface\\Icons\\Spell_Shadow_CarrionSwarm", type = "Disease"},
+	{texture = "Interface\\Icons\\Ability_Gouge", stacks = 3},
+}
+
+function NotGrid:ShouldShowDebuff(debuffType)
+	return self.o[debuffTypeOptions[debuffType] or "debuffshowother"]
+end
+
+function NotGrid:GetDebuffTypeColor(debuffType)
+	return DebuffTypeColor[debuffType] or DebuffTypeColor.none
+end
+
+function NotGrid:SetDebuffIcon(f, index, texture, applications, spelltype)
+	local icon = f.debuffIcons[index]
+	local color = self:GetDebuffTypeColor(spelltype)
+	icon.texture:SetTexture(texture)
+	icon:SetBackdropBorderColor(color.r, color.g, color.b, 1)
+	if applications and applications > 1 then
+		icon.count:SetText(applications)
+	else
+		icon.count:SetText("")
+	end
+	icon:Show()
+	if index == 1 then f.debuffType = spelltype or "none" end
+end
+
 function NotGrid:UNIT_AURA(unitid)
 	local o = self.o
 	local f = self.UnitFrames[unitid]
+	if not f then return end
 
 	local auratable = self.Compost:Acquire() -- I only care about buffname for buffs -- reset every time
+	local shown = 0
+	f.debuffType = nil
+	local auraunit = o.configmode and "player" or unitid
 
-	if f and UnitExists(unitid) then
+	if UnitExists(auraunit) then
 		--get buff info -- loop through every buff and adds info to table
 		local bi = 1
-		while (UnitBuff(unitid,bi) ~= nil) do
-			self.Gratuity:SetUnitBuff(unitid,bi)
+		while (UnitBuff(auraunit,bi) ~= nil) do
+			self.Gratuity:SetUnitBuff(auraunit,bi)
 			local buffname = self.Gratuity:GetLine(1)
 			if buffname then
 				auratable[buffname] = true
@@ -355,19 +398,33 @@ function NotGrid:UNIT_AURA(unitid)
 			bi = bi + 1;
 		end
 
-		--get debuff info -- same as above
-		local di = 1
-		while (UnitDebuff(unitid,di) ~= nil) do
-			self.Gratuity:SetUnitDebuff(unitid,di)
-			local debuffname = self.Gratuity:GetLine(1)
-			local _, _, spelltype =  UnitDebuff(unitid,di) -- texture, applications, type
-			if debuffname then
-				auratable[debuffname] = true
+		-- Display real debuff textures in aura order; the first shown type owns the border.
+		if o.configmode and o.showdebufficons then
+			for _,debuff in ipairs(previewDebuffs) do
+				if shown < (f.debuffIconLimit or 0) and self:ShouldShowDebuff(debuff.type) then
+					shown = shown + 1
+					self:SetDebuffIcon(f, shown, debuff.texture, debuff.stacks, debuff.type)
+				end
 			end
-			if spelltype then
-				auratable[spelltype] = true
+		else
+			local di = 1
+			while true do
+				local texture, applications, spelltype = UnitDebuff(auraunit,di)
+				if not texture then break end
+				if o.showdebufficons then
+					if shown < (f.debuffIconLimit or 0) and self:ShouldShowDebuff(spelltype) then
+						shown = shown + 1
+						self:SetDebuffIcon(f, shown, texture, applications, spelltype)
+					end
+				else
+					-- Preserve the legacy aura indicators when the column is disabled.
+					self.Gratuity:SetUnitDebuff(auraunit,di)
+					local debuffname = self.Gratuity:GetLine(1)
+					if debuffname then auratable[debuffname] = true end
+					if spelltype then auratable[spelltype] = true end
+				end
+				di = di + 1
 			end
-			di = di + 1;
 		end
 
         for i=1,11 do -- Changed from 8 to 11 as we've added Buff Icon 1,2 and 3 (9th, 10th, 11th Icon)
@@ -390,12 +447,18 @@ function NotGrid:UNIT_AURA(unitid)
                 end
             end
         end
-    end
+	else
+		for i = 1, 11 do f.healthbar["trackingicon"..i]:Hide() end
+	end
+	for i = shown + 1, table.getn(f.debuffIcons) do
+		f.debuffIcons[i]:Hide()
+	end
     self.Compost:Reclaim(auratable)
+	self:UNIT_BORDER(unitid)
 end
 
 function NotGrid:CheckAura(i, auratable)
-	for _,text in self.o["trackingicon"..i] do
+	for _,text in ipairs(self.o["trackingicon"..i]) do
 		if auratable[text] then
 			return true
 		end
@@ -409,12 +472,22 @@ end
 function NotGrid:UNIT_BORDER(unitid)
 	local o = self.o
 	local f = self.UnitFrames[unitid]
+	if o.configmode then unitid = "player" end
+	if f and not UnitExists(unitid) then
+		f.border:SetBackdropBorderColor(unpack(o.unitbordercolor))
+		f.border.middleart:SetVertexColor(unpack(o.unitbordercolor))
+		return
+	end
 	if f and UnitExists(unitid) then
 		local name = UnitName(unitid)
 		local targetname = UnitName("Target") -- could get erronous with pets
 		local currmana = UnitMana(unitid)
 		local maxmana = UnitManaMax(unitid)
-		if o.tracktarget and targetname and targetname == name then
+		if o.showdebufficons and o.debuffborder and f.debuffType then
+			local color = self:GetDebuffTypeColor(f.debuffType)
+			f.border:SetBackdropBorderColor(color.r, color.g, color.b, 1)
+			f.border.middleart:SetVertexColor(color.r, color.g, color.b, 1)
+		elseif o.tracktarget and targetname and targetname == name then
 			f.border:SetBackdropBorderColor(unpack(o.targetcolor))
 			f.border.middleart:SetVertexColor(unpack(o.targetcolor))
 		elseif o.trackaggro and self.Banzai:GetUnitAggroByUnitId(unitid) then

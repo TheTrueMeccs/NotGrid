@@ -102,6 +102,7 @@ function NotGrid:CreateUnitFrame(unitid,raidindex)
 	-- I was having problems with incheal covering up these fontstrings. My soluction is to parent them to the incheal, but set the relative point to the healthbar. And instead of hide/show the incheal I just lower/higher its color opacity
 	f.namehealthtext = f.incheal:CreateFontString("$parentnamehealthtext", "ARTWORK", "GameFontHighlight")
 	f.healcommtext = f.incheal:CreateFontString("$parenthealcommtext", "OVERLAY", "GameFontHighlight")
+	self:CreateDebuffIcons(f)
 
 	-- EDIT I VALUE TO REPRESENT TOTAL NUMBER OF RAID FRAME ICONS
 	for i=1,11 do -- changed from 8 to 11 to accomodate Buff Icon 1,2,3
@@ -200,6 +201,50 @@ end
 -------------------
 -- Config Frames --
 -------------------
+
+function NotGrid:CreateDebuffIcons(f)
+	f.debuffIcons = {}
+	for i = 1, 8 do
+		local icon = CreateFrame("Frame", "$parentDebuff"..i, f)
+		icon:EnableMouse(false) -- Keep targeting and Clique clicks on the unit frame.
+		icon.texture = icon:CreateTexture(nil, "ARTWORK")
+		icon.count = icon:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		icon.count:SetPoint("BOTTOMRIGHT", -1, 1)
+		icon:Hide()
+		f.debuffIcons[i] = icon
+	end
+end
+
+function NotGrid:ConfigDebuffIcons(f)
+	local o = self.o
+	-- Positive margins move right/down; negative margins allow an outset.
+	-- Keep at least one pixel available when a saved margin exceeds the frame.
+	local left = math.min(o.debuffmarginleft, math.max(0, o.unitwidth - 2))
+	local top = math.min(o.debuffmargintop, math.max(0, o.unitheight - 2))
+	local spacing = o.debuffspacing
+	local width = math.max(1, o.unitwidth - left - 1)
+	local height = math.max(1, o.unitheight - top - 1)
+	local size = math.max(1, math.min(o.debufficonsize, width, height))
+	local textureInset = size > 2 and 1 or 0
+	-- Fit the column between the chosen starting point and the health bar's bottom.
+	f.debuffIconLimit = math.max(1, math.min(o.debuffmaxicons, table.getn(f.debuffIcons), math.floor((height + spacing) / (size + spacing))))
+	for i,icon in ipairs(f.debuffIcons) do
+		icon:SetWidth(size)
+		icon:SetHeight(size)
+		icon:ClearAllPoints()
+		icon:SetPoint("TOPLEFT", f.healthbar, "TOPLEFT", left, -top - (i - 1) * (size + spacing))
+		icon:SetFrameLevel(f.incheal:GetFrameLevel() + 3)
+		icon:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1})
+		icon:SetBackdropColor(0, 0, 0, 1)
+		icon.texture:ClearAllPoints()
+		icon.texture:SetPoint("TOPLEFT", textureInset, -textureInset)
+		icon.texture:SetPoint("BOTTOMRIGHT", -textureInset, textureInset)
+		icon.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+		SetUnitTextFont(icon.count, o.unitfont, math.max(6, math.min(10, size - 2)), "OUTLINE")
+		icon.count:SetTextColor(1, 1, 1, 1)
+		icon:Hide()
+	end
+end
 
 function NotGrid:ConfigUnitFrames() -- this can get called on every setting change, instead of doing some wierd roundabout way. Hurray!
 	local o = self.o
@@ -365,6 +410,7 @@ function NotGrid:ConfigUnitFrames() -- this can get called on every setting chan
 				end
 			end
 		end
+		self:ConfigDebuffIcons(f)
 		for i,point in {"TOPLEFT", "TOP", "TOPRIGHT", "RIGHT", "BOTTOMRIGHT", "BOTTOM", "BOTTOMLEFT", "LEFT", "BOTTOM", "BOTTOM", "BOTTOM"} do
 			local fi = f.healthbar["trackingicon"..i]
 			fi:SetWidth(o.unittrackingiconsize)
