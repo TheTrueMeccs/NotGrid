@@ -10,6 +10,7 @@ function NotGrid:DoDropDown()
 	self:InitializeSlider()
 	self:InitializeEditBox()
 	self:InitializePositionBox()
+	self:InitializeTexturePicker()
 end
 
 local menuarray = {
@@ -74,7 +75,7 @@ local menuarray = {
 		},
 	},
 	{text = L["Texture"],
-	editbox = {
+	texture = {
 		key = "unithealthbartexture",
 		},
 	},
@@ -89,6 +90,9 @@ local menuarray = {
 		minval = 1,
 		maxval = 20,
 		},
+	},
+	{text = L["Name Outline"],
+	toggle = "unitnamehealthtextoutline",
 	},
 	{text = L["Name Length"],
 	slider = {
@@ -118,7 +122,7 @@ local menuarray = {
 	tooltip = L["classcolor_tooltip"],
 	},
 	{text = L["Health Background"],
-	editbox = {
+	texture = {
 		key = "unithealthbarbgtexture",
 		},
 	toggle = "colorunithealthbarbgbyclass",
@@ -403,7 +407,7 @@ local menuarray = {
 	},
 	{text = L["Out of Range Alpha"], 
 	slider = {
-		key = "ooralphaa",
+		key = "ooralpha",
 		minval = 0,
 		maxval = 1,
 		stepvalue = 0.1,
@@ -543,6 +547,7 @@ function NotGrid:InitializeMenu()
 		fb.toggle = val.toggle
 		fb.slider = val.slider
 		fb.editbox = val.editbox
+		fb.texture = val.texture
 		--fb.color = val.color
 		fb.tooltip = val.tooltip
 		fb.reloadui = val.reloadui
@@ -580,6 +585,10 @@ function NotGrid:InitializeMenu()
 		end
 
 		fb:SetScript("OnClick", function()
+			if this.texture and not this.toggle then
+				self:ShowTexturePicker(this)
+				return
+			end
 			if this.toggle then
 				if NotGridOptions[this.toggle] == true then
 					NotGridOptions[this.toggle] = false
@@ -606,7 +615,12 @@ function NotGrid:InitializeMenu()
 			end
 		end)
 		fb:SetScript("OnEnter", function()
-			if this.slider and this.editbox then
+			if not this.texture then
+				NotGridMenuTexturePicker:Hide()
+			end
+			if this.texture then
+				self:ShowTexturePicker(this)
+			elseif this.slider and this.editbox then
 				--show them both
 			elseif this.editbox then
 				NotGridMenuEditBox.key = this.editbox.key
@@ -765,6 +779,124 @@ function NotGrid:InitializeEditBox()
 			this:SetText(NotGridOptions[this.key])
 		end
 	end)
+end
+
+--------------------
+-- Texture Picker --
+--------------------
+
+local texturechoices = {
+	{name = "Blizzard player bar", path = "Interface\\TargetingFrame\\UI-StatusBar"},
+	{name = "Flat", path = "Interface\\Buttons\\WHITE8X8"},
+	{name = "Striped", path = "Interface\\AddOns\\NotGrid\\media\\Striped"},
+	{name = "Vertical gradient", path = "Interface\\AddOns\\NotGrid\\media\\GridGradient"},
+	{name = "Horizontal gradient", path = "Interface\\AddOns\\NotGrid\\media\\GridHorizontalGradient"},
+}
+
+function NotGrid:RefreshTexturePicker()
+	local f = NotGridMenuTexturePicker
+	local path = NotGridOptions[f.key] or ""
+	f.edit:SetText(path)
+	local normalized = string.lower(string.gsub(path, "/", "\\"))
+	for _,button in ipairs(f.buttons) do
+		if normalized == string.lower(button.path) then
+			button.check:Show()
+		else
+			button.check:Hide()
+		end
+	end
+end
+
+function NotGrid:ApplyTexture(path)
+	local f = NotGridMenuTexturePicker
+	if not f.key then return end
+	path = string.gsub(path, "^%s*(.-)%s*$", "%1")
+	if path ~= "" then
+		NotGridOptions[f.key] = path
+		NotGridOptionChange()
+	end
+	f.edit:ClearFocus()
+	self:RefreshTexturePicker()
+end
+
+function NotGrid:ShowTexturePicker(anchor)
+	local f = NotGridMenuTexturePicker
+	f.edit:ClearFocus()
+	f.key = anchor.texture.key
+	f.title:SetText(anchor.fs:GetText())
+	f:ClearAllPoints()
+	f:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -8, 0)
+	self:RefreshTexturePicker()
+	NotGridMenuSliderContainer:Hide()
+	NotGridMenuEditBoxContainer:Hide()
+	NotGridMenuPositionBoxContainer:Hide()
+	f:Show()
+end
+
+function NotGrid:InitializeTexturePicker()
+	local f = CreateFrame("Frame", "NotGridMenuTexturePicker", NotGridOptionsMenu)
+	f:SetWidth(300)
+	f:SetHeight(38 + table.getn(texturechoices) * 40 + 78)
+	f:SetFrameStrata("DIALOG")
+	f:SetClampedToScreen(true)
+	f:EnableMouse(true)
+	f:SetBackdrop({bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16, insets = {left = 4, right = 4, top = 4, bottom = 4}})
+	f:SetBackdropColor(0, 0, 0, 1)
+	f.title = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	f.title:SetPoint("TOPLEFT", 12, -12)
+	local close = CreateFrame("Button", "$parentCloseButton", f, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", 0, 0)
+	close:SetScript("OnClick", function() f:Hide() end)
+	f.buttons = {}
+	for i,choice in ipairs(texturechoices) do
+		local button = CreateFrame("Button", nil, f)
+		button.path = choice.path
+		button:SetWidth(276)
+		button:SetHeight(36)
+		button:SetPoint("TOPLEFT", 12, -34 - (i - 1) * 40)
+		button:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight", "ADD")
+		button.check = button:CreateTexture(nil, "OVERLAY")
+		button.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+		button.check:SetWidth(20)
+		button.check:SetHeight(20)
+		button.check:SetPoint("LEFT", 0, 0)
+		button.label = button:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+		button.label:SetPoint("TOPLEFT", 24, -1)
+		button.label:SetText(choice.name)
+		button.bar = CreateFrame("StatusBar", nil, button)
+		button.bar:SetWidth(248)
+		button.bar:SetHeight(14)
+		button.bar:SetPoint("BOTTOMLEFT", 24, 2)
+		button.bar:SetMinMaxValues(0, 1)
+		button.bar:SetValue(1)
+		button.bar:SetStatusBarTexture(choice.path)
+		button.bar:SetStatusBarColor(0.2, 0.8, 0.2, 1)
+		button:SetScript("OnClick", function() self:ApplyTexture(this.path) end)
+		f.buttons[i] = button
+	end
+	local label = f:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+	label:SetPoint("BOTTOMLEFT", 14, 64)
+	label:SetText("Custom path (optional)")
+	f.edit = CreateFrame("EditBox", "$parentCustomPath", f, "InputBoxTemplate")
+	f.edit:SetFontObject("GameFontHighlightSmall")
+	f.edit:SetWidth(268)
+	f.edit:SetHeight(24)
+	f.edit:SetPoint("BOTTOMLEFT", 16, 34)
+	f.edit:SetAutoFocus(false)
+	f.edit:SetMaxLetters(255)
+	f.edit:SetScript("OnEnterPressed", function() self:ApplyTexture(this:GetText()) end)
+	f.edit:SetScript("OnEscapePressed", function()
+		this:ClearFocus()
+		self:RefreshTexturePicker()
+	end)
+	f.apply = CreateFrame("Button", "$parentApply", f, "UIPanelButtonTemplate")
+	f.apply:SetWidth(80)
+	f.apply:SetHeight(22)
+	f.apply:SetPoint("BOTTOMRIGHT", -12, 10)
+	f.apply:SetText(APPLY)
+	f.apply:SetScript("OnClick", function() self:ApplyTexture(f.edit:GetText()) end)
+	f:SetScript("OnHide", function() f.edit:ClearFocus() end)
+	f:Hide()
 end
 
 ----------------------

@@ -501,7 +501,7 @@ function NotGrid:ClickHandle(button)
 			ToggleFriendsFrame(4) -- Открываем окно рейда (4 - это индекс для рейда)
 		else
 			local name = UnitName(this.unit)
-			local id = string.sub(this.unit,5)
+			local id = this.raidindex -- Only raid frames have a numeric roster index.
 			local unit = this.unit
 			local menuFrame = FriendsDropDown
 			menuFrame.displayMode = "MENU"

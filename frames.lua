@@ -2,6 +2,29 @@
 -- Creating Frames --
 ---------------------
 
+local function TryUnitTextFont(fs, path, size, flags)
+	if type(path) ~= "string" then return false end
+	path = string.gsub(path, "^%s*(.-)%s*$", "%1")
+	if path == "" then return false end
+	local ok, result = pcall(fs.SetFont, fs, path, size, flags)
+	if not ok or result == false then return false end
+	-- Some clients return nil on success, so verify the effective font too.
+	local loaded = fs:GetFont()
+	return loaded and string.lower(string.gsub(loaded, "/", "\\")) == string.lower(string.gsub(path, "/", "\\"))
+end
+
+local function SetUnitTextFont(fs, path, size, flags)
+	size = tonumber(size) or 12
+	if size <= 0 then size = 12 end
+	if TryUnitTextFont(fs, path, size, flags) then return end
+	-- Use a font the client's own UI has already loaded successfully.
+	fs:SetFontObject(GameFontHighlight)
+	local fallback = fs:GetFont()
+	if not TryUnitTextFont(fs, fallback, size, flags) then
+		fs:SetFontObject(GameFontHighlight)
+	end
+end
+
 function NotGrid:CreateFrames()
 	self.Container = self:CreateContainerFrame()
 	for i=1,40 do 
@@ -77,8 +100,8 @@ function NotGrid:CreateUnitFrame(unitid,raidindex)
 	f.incheal = CreateFrame("Frame","$parenthealcommbar",f.healthbar) -- Was using a statusbar behind the health frame but when the frame's alpha is low this would be seen through it
 	
 	-- I was having problems with incheal covering up these fontstrings. My soluction is to parent them to the incheal, but set the relative point to the healthbar. And instead of hide/show the incheal I just lower/higher its color opacity
-	f.namehealthtext = f.incheal:CreateFontString("$parentnamehealthtext", "ARTWORK")
-	f.healcommtext = f.incheal:CreateFontString("$parenthealcommtext", "OVERLAY")
+	f.namehealthtext = f.incheal:CreateFontString("$parentnamehealthtext", "ARTWORK", "GameFontHighlight")
+	f.healcommtext = f.incheal:CreateFontString("$parenthealcommtext", "OVERLAY", "GameFontHighlight")
 
 	-- EDIT I VALUE TO REPRESENT TOTAL NUMBER OF RAID FRAME ICONS
 	for i=1,11 do -- changed from 8 to 11 to accomodate Buff Icon 1,2,3
@@ -320,6 +343,12 @@ function NotGrid:ConfigUnitFrames() -- this can get called on every setting chan
 
 		for _,fsname in {"namehealthtext", "healcommtext"} do
 			local fs = f[fsname]
+			local size, flags = o.unithealcommtextsize, ""
+			if fsname == "namehealthtext" then
+				size = o.unitnamehealthtextsize
+				flags = o.unitnamehealthtextoutline and "OUTLINE" or ""
+			end
+			SetUnitTextFont(fs, o.unitfont, size, flags)
 			fs:SetShadowColor(0, 0, 0, 1.0)
 			fs:SetShadowOffset(0.80, -0.80)
 			fs:ClearAllPoints()
@@ -327,11 +356,9 @@ function NotGrid:ConfigUnitFrames() -- this can get called on every setting chan
 				if not o.colorunitnamehealthbyclass then
 					fs:SetTextColor(unpack(o.unitnamehealthtextcolor))
 				end
-				fs:SetFont(o.unitfont, o.unitnamehealthtextsize)
 				fs:SetPoint("CENTER",f.healthbar,"CENTER",o.unitnamehealthoffx,o.unitnamehealthoffy)
 			elseif fsname == "healcommtext" then
 				fs:SetTextColor(unpack(o.unithealcommtextcolor))
-				fs:SetFont(o.unitfont, o.unithealcommtextsize)
 				fs:SetPoint("CENTER",f.healthbar,"CENTER",o.unithealcommtextoffx,o.unithealcommtextoffy)
 				if not o.showhealcommtext then
 					fs:Hide()
