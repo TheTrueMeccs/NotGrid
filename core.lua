@@ -60,10 +60,20 @@ function NotGrid:OnEnable()
    -- Combat state tracking
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnEnterCombat")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnLeaveCombat")
-	-- Populate auras already present when the addon is enabled or reloaded.
+	self:RefreshUnitFrames()
+end
+
+function NotGrid:RefreshUnitFrames()
+	-- RosterLib may have populated its cache before we subscribed to its events.
+	-- Refresh explicitly on enable and world entry, including solo and party units.
+	self:GetIdenticalUnits()
 	for unitid in pairs(self.UnitFrames) do
+		self:UNIT_MAIN(unitid)
+		self:UNIT_RAID_TARGET(unitid)
 		self:UNIT_AURA(unitid)
 	end
+	self:PositionFrames()
+	self:BlizzFrameHandler()
 end
 
 ----------------------
@@ -745,16 +755,8 @@ function NotGrid:PLAYER_ENTERING_WORLD() -- when they login,reloadui,or zone in/
 		end
 	end
 	self:UpdateProximityMapVars() -- zoning into an instance won't trigger a zonechange event if the outdoors name is the same name as the indoors. This ensures the vars update.
-	self:BlizzFrameHandler()
 	
-	-- Update all raid units
-	if GetNumRaidMembers() > 0 then
-		for i=1,40 do
-			if UnitExists("raid"..i) then
-				self:UNIT_MAIN("raid"..i)
-			end
-		end
-	end
+	self:RefreshUnitFrames()
 end
 
 

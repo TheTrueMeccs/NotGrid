@@ -215,9 +215,20 @@ function NotGrid:CreateDebuffIcons(f)
 	end
 end
 
+local debuffCorners = {
+	TOPLEFT = {1, -1}, TOPRIGHT = {-1, -1},
+	BOTTOMLEFT = {1, 1}, BOTTOMRIGHT = {-1, 1},
+}
+local debuffDirections = {
+	DOWN = {0, -1}, UP = {0, 1}, LEFT = {-1, 0}, RIGHT = {1, 0},
+}
+
 function NotGrid:ConfigDebuffIcons(f)
 	local o = self.o
-	-- Positive margins move right/down; negative margins allow an outset.
+	local anchor = debuffCorners[o.debuffanchor] and o.debuffanchor or "TOPLEFT"
+	local corner = debuffCorners[anchor]
+	local direction = debuffDirections[o.debuffgrowth] or debuffDirections.DOWN
+	-- Positive margins move inward from the selected corner; negative values move outward.
 	-- Keep at least one pixel available when a saved margin exceeds the frame.
 	local left = math.min(o.debuffmarginleft, math.max(0, o.unitwidth - 2))
 	local top = math.min(o.debuffmargintop, math.max(0, o.unitheight - 2))
@@ -226,13 +237,19 @@ function NotGrid:ConfigDebuffIcons(f)
 	local height = math.max(1, o.unitheight - top - 1)
 	local size = math.max(1, math.min(o.debufficonsize, width, height))
 	local textureInset = size > 2 and 1 or 0
-	-- Fit the column between the chosen starting point and the health bar's bottom.
-	f.debuffIconLimit = math.max(1, math.min(o.debuffmaxicons, table.getn(f.debuffIcons), math.floor((height + spacing) / (size + spacing))))
+	local limit = math.min(o.debuffmaxicons, table.getn(f.debuffIcons))
+	-- Inward rows/columns fit the health bar; outward growth can extend beyond it.
+	if direction[1] == corner[1] or direction[2] == corner[2] then
+		local extent = direction[1] ~= 0 and width or height
+		limit = math.min(limit, math.floor((extent + spacing) / (size + spacing)))
+	end
+	f.debuffIconLimit = math.max(1, limit)
 	for i,icon in ipairs(f.debuffIcons) do
 		icon:SetWidth(size)
 		icon:SetHeight(size)
 		icon:ClearAllPoints()
-		icon:SetPoint("TOPLEFT", f.healthbar, "TOPLEFT", left, -top - (i - 1) * (size + spacing))
+		local offset = (i - 1) * (size + spacing)
+		icon:SetPoint(anchor, f.healthbar, anchor, corner[1] * left + direction[1] * offset, corner[2] * top + direction[2] * offset)
 		icon:SetFrameLevel(f.incheal:GetFrameLevel() + 3)
 		icon:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1})
 		icon:SetBackdropColor(0, 0, 0, 1)

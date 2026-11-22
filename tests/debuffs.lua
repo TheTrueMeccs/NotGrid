@@ -25,15 +25,19 @@ NotGrid:SetDefaultOptions()
 assert(NotGridOptions.unitfont == "Custom.ttf")
 assert(NotGridOptions.trackingicon3[1] == "Magic")
 assert(NotGridOptions.showdebufficons and NotGridOptions.debuffborder)
+assert(NotGridOptions.debuffanchor == "TOPLEFT" and NotGridOptions.debuffgrowth == "DOWN")
 NotGridOptions.debuffshowpoison = false
 NotGridOptions.debuffmarginleft = 0
 NotGridOptions.debuffmargintop = -3
 NotGridOptions.debuffspacing = 0
+NotGridOptions.debuffanchor, NotGridOptions.debuffgrowth = "BOTTOMRIGHT", "LEFT"
 NotGrid:SetDefaultOptions()
 assert(NotGridOptions.debuffshowpoison == false, "An explicit filter choice must survive initialization")
 assert(NotGridOptions.debuffmarginleft == 0 and NotGridOptions.debuffmargintop == -3 and NotGridOptions.debuffspacing == 0, "Saved margins and zero spacing must survive initialization")
+assert(NotGridOptions.debuffanchor == "BOTTOMRIGHT" and NotGridOptions.debuffgrowth == "LEFT", "Saved anchor and growth must survive initialization")
 NotGridOptions.debuffshowpoison = true
 NotGridOptions.debuffmarginleft, NotGridOptions.debuffmargintop, NotGridOptions.debuffspacing = 1, 1, 1
+NotGridOptions.debuffanchor, NotGridOptions.debuffgrowth = "TOPLEFT", "DOWN"
 local o = NotGridOptions
 
 local methods = {}
@@ -205,6 +209,42 @@ for _, layout in ipairs({{4, 5, 3}, {0, 0, 0}, {-5, -4, 2}, {50, 50, 10}}) do
 	assert(f.debuffIconLimit == math.min(8, math.floor((35 - top + layout[3]) / (first.height + layout[3]))))
 end
 o.debuffmarginleft, o.debuffmargintop, o.debuffspacing = 1, 1, 1
+-- All 16 corner/direction combinations: anchor, step, fit and outward growth.
+local corners = {TOPLEFT = {1, -1}, TOPRIGHT = {-1, -1}, BOTTOMLEFT = {1, 1}, BOTTOMRIGHT = {-1, 1}}
+local directions = {DOWN = {0, -1}, UP = {0, 1}, LEFT = {-1, 0}, RIGHT = {1, 0}}
+for anchor, corner in pairs(corners) do
+	for growth, direction in pairs(directions) do
+		for _, margins in ipairs({{3, 5}, {0, 0}, {-4, -2}, {50, 50}}) do
+			o.debuffanchor, o.debuffgrowth = anchor, growth
+			o.debuffmarginleft, o.debuffmargintop = unpack(margins)
+			o.unitwidth, o.unitheight, o.debufficonsize, o.debuffmaxicons, o.debuffspacing = 54, 34, 10, 8, 2
+			NotGrid:ConfigDebuffIcons(f)
+			local first = f.debuffIcons[1]
+			assert(first.anchor[1] == anchor and first.anchor[3] == anchor)
+			assert(first.anchor[4] == corner[1] * math.min(margins[1], 52))
+			assert(first.anchor[5] == corner[2] * math.min(margins[2], 32))
+			local inward = direction[1] == corner[1] or direction[2] == corner[2]
+			if not inward then assert(f.debuffIconLimit == 8, "Outward growth must keep the requested count") end
+			for i = 2, f.debuffIconLimit do
+				local previous, current = f.debuffIcons[i - 1], f.debuffIcons[i]
+				assert(current.anchor[4] - previous.anchor[4] == direction[1] * (first.width + 2))
+				assert(current.anchor[5] - previous.anchor[5] == direction[2] * (first.height + 2))
+			end
+			if inward then
+				local last = f.debuffIcons[f.debuffIconLimit]
+				local x, y = last.anchor[4], last.anchor[5]
+				if corner[1] < 0 then x = 54 + x - last.width end
+				if corner[2] < 0 then y = 34 + y - last.height end
+				if direction[1] > 0 then assert(x + last.width <= 53) end
+				if direction[1] < 0 then assert(x >= 1) end
+				if direction[2] > 0 then assert(y + last.height <= 33) end
+				if direction[2] < 0 then assert(y >= 1) end
+			end
+		end
+	end
+end
+o.debuffanchor, o.debuffgrowth = "TOPLEFT", "DOWN"
+o.debuffmarginleft, o.debuffmargintop, o.debuffspacing = 1, 1, 1
 o.unitwidth, o.unitheight, o.debufficonsize, o.debuffmaxicons = 36, 36, 10, 1
 NotGrid:ConfigDebuffIcons(f)
 o.debuffshowmagic = true
@@ -282,19 +322,68 @@ local menu = assert(loadstring(read("menus.lua") .. "\nreturn menuarray"))()
 local controls = 0
 for _, entry in ipairs(menu) do
 	if entry.slider then assert(type(defaults[entry.slider.key]) == "number", entry.slider.key) end
-	local key = entry.toggle or (entry.slider and entry.slider.key)
+	local key = entry.toggle or (entry.slider and entry.slider.key) or (entry.choice and entry.choice.key)
 	if key and (string.find(key, "^debuff") or key == "showdebufficons") then
 		controls = controls + 1
 		assert(defaults[key] ~= nil)
 	end
 end
-assert(controls == 12)
+assert(controls == 14)
 local translations = {}
 function locale:RegisterTranslations(language, factory) translations[language] = factory() end
 assert(loadfile("localization.lua"))()
-for _, key in ipairs({"Show Debuff Icons", "Debuff Type Border", "Debuff Icon Size", "Debuff Icon Count", "Debuff Left Margin", "Debuff Top Margin", "Debuff Icon Spacing", "Show Magic Debuffs", "Show Curse Debuffs", "Show Disease Debuffs", "Show Poison Debuffs", "Show Other Debuffs"}) do
+for _, key in ipairs({"Show Debuff Icons", "Debuff Type Border", "Debuff Icon Size", "Debuff Icon Count", "Debuff Anchor", "Debuff Growth Direction", "Top Left", "Top Right", "Bottom Left", "Bottom Right", "Up", "Down", "Left", "Right", "Debuff Horizontal Margin", "Debuff Vertical Margin", "Debuff Icon Spacing", "Show Magic Debuffs", "Show Curse Debuffs", "Show Disease Debuffs", "Show Poison Debuffs", "Show Other Debuffs"}) do
 	assert(translations.enUS[key] and translations.ruRU[key], key)
 end
+-- Exercise actual picker buttons and saved values with live Config Mode samples.
+function methods:SetScript(event, handler)
+	self.scripts = self.scripts or {}
+	self.scripts[event] = handler
+end
+function methods:SetHighlightTexture() end
+local originalCreateFrame = CreateFrame
+function CreateFrame(kind, name, parent)
+	local frame = originalCreateFrame(kind, name, parent)
+	if name then _G[name] = frame end
+	return frame
+end
+NotGridOptionsMenu = object()
+NotGridMenuTexturePicker, NotGridMenuSliderContainer = object(), object()
+NotGridMenuEditBoxContainer, NotGridMenuPositionBoxContainer = object(), object()
+local originalOptionChange, changed = NotGridOptionChange, 0
+function NotGridOptionChange()
+	changed = changed + 1
+	NotGrid:ConfigDebuffIcons(preview)
+	NotGrid:UNIT_AURA("raid40")
+end
+local choices = {}
+for _, entry in ipairs(menu) do
+	if entry.choice then choices[entry.choice.key] = {choice = entry.choice} end
+end
+o.configmode, o.unitheight, o.debuffmaxicons = true, 100, 5
+for _, key in ipairs({"debuffshowmagic", "debuffshowpoison", "debuffshowcurse", "debuffshowdisease", "debuffshowother"}) do o[key] = true end
+for anchorIndex = 1, 4 do
+	NotGrid:ShowChoicePicker(choices.debuffanchor)
+	this = NotGridMenuChoicePicker.buttons[anchorIndex]
+	local expectedAnchor = this.value
+	this.scripts.OnClick()
+	assert(o.debuffanchor == expectedAnchor and string.find(this.text.text, ">", 1, true))
+	for growthIndex = 1, 4 do
+		NotGrid:ShowChoicePicker(choices.debuffgrowth)
+		this = NotGridMenuChoicePicker.buttons[growthIndex]
+		local expectedGrowth = this.value
+		this.scripts.OnClick()
+		assert(o.debuffgrowth == expectedGrowth and string.find(this.text.text, ">", 1, true))
+		assert(preview.debuffIcons[1].shown and preview.debuffIcons[1].anchor[1] == expectedAnchor)
+		assert(shown(preview) == math.min(5, preview.debuffIconLimit))
+		assert(preview.debuffType == "Magic" and matches(preview.border.color, DebuffTypeColor.Magic))
+	end
+end
+assert(changed == 20)
+CreateFrame, NotGridOptionChange, this = originalCreateFrame, originalOptionChange, nil
+o.configmode, o.unitheight, o.debuffmaxicons = false, 36, 3
+o.debuffanchor, o.debuffgrowth = "TOPLEFT", "DOWN"
+
 -- Existing auras must be populated on enable/reload, before another aura event.
 source = read("core.lua")
 local start = assert(string.find(source, "function NotGrid:OnEnable()", 1, true))
@@ -306,10 +395,15 @@ assert(loadstring('local L = AceLibrary("AceLocale-2.2"):new("NotGrid")\n' .. so
 function NotGrid:RegisterEvent() end
 function NotGrid:ScheduleRepeatingEvent() end
 function NotGrid:DoDropDown() end
+function NotGrid:GetIdenticalUnits() end
+function NotGrid:PositionFrames() end
+function NotGrid:BlizzFrameHandler() end
+function NotGrid:UNIT_MAIN() end
+function NotGrid:UNIT_RAID_TARGET() end
 function NotGrid:ConfigUnitFrames()
 	for _, frame in pairs(self.UnitFrames) do self:ConfigDebuffIcons(frame) end
 end
 o.showdebufficons, o.debuffborder, o.debuffshowmagic = true, true, true
 NotGrid:OnEnable()
 assert(shown(f) == 1 and f.debuffType == "Magic" and matches(f.border.color, DebuffTypeColor.Magic))
-print("PASS: debuff textures/stacks, all type filters, border priority/restoration, downward layout, fitting/count limits, combat, unit removal/reuse, Config Mode previews and cleanup, legacy buffs, defaults and menu wiring.")
+print("PASS: debuff textures/stacks, filters and borders, all 16 corner/growth layouts, margins and fitting, Config Mode and picker clicks, combat, unit reuse, legacy buffs, defaults and menu wiring.")

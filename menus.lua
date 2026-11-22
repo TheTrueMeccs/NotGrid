@@ -225,11 +225,29 @@ local menuarray = {
 		slider = {key = "debuffmaxicons", minval = 1, maxval = 8},
 		tooltip = L["debuffcount_tooltip"],
 	},
-	{text = L["Debuff Left Margin"],
+	{text = L["Debuff Anchor"],
+		choice = {key = "debuffanchor", options = {
+			{value = "TOPLEFT", text = L["Top Left"]},
+			{value = "TOPRIGHT", text = L["Top Right"]},
+			{value = "BOTTOMLEFT", text = L["Bottom Left"]},
+			{value = "BOTTOMRIGHT", text = L["Bottom Right"]},
+		}},
+		tooltip = L["debuffanchor_tooltip"],
+	},
+	{text = L["Debuff Growth Direction"],
+		choice = {key = "debuffgrowth", options = {
+			{value = "DOWN", text = L["Down"]},
+			{value = "UP", text = L["Up"]},
+			{value = "LEFT", text = L["Left"]},
+			{value = "RIGHT", text = L["Right"]},
+		}},
+		tooltip = L["debuffgrowth_tooltip"],
+	},
+	{text = L["Debuff Horizontal Margin"],
 		slider = {key = "debuffmarginleft", minval = -30, maxval = 50},
 		tooltip = L["debuffmarginleft_tooltip"],
 	},
-	{text = L["Debuff Top Margin"],
+	{text = L["Debuff Vertical Margin"],
 		slider = {key = "debuffmargintop", minval = -30, maxval = 50},
 		tooltip = L["debuffmargintop_tooltip"],
 	},
@@ -581,6 +599,7 @@ function NotGrid:InitializeMenu()
 		fb.slider = val.slider
 		fb.editbox = val.editbox
 		fb.texture = val.texture
+		fb.choice = val.choice
 		--fb.color = val.color
 		fb.tooltip = val.tooltip
 		fb.reloadui = val.reloadui
@@ -618,6 +637,10 @@ function NotGrid:InitializeMenu()
 		end
 
 		fb:SetScript("OnClick", function()
+			if this.choice then
+				self:ShowChoicePicker(this)
+				return
+			end
 			if this.texture and not this.toggle then
 				self:ShowTexturePicker(this)
 				return
@@ -648,10 +671,13 @@ function NotGrid:InitializeMenu()
 			end
 		end)
 		fb:SetScript("OnEnter", function()
+			if NotGridMenuChoicePicker then NotGridMenuChoicePicker:Hide() end
 			if not this.texture then
 				NotGridMenuTexturePicker:Hide()
 			end
-			if this.texture then
+			if this.choice then
+				self:ShowChoicePicker(this)
+			elseif this.texture then
 				self:ShowTexturePicker(this)
 			elseif this.slider and this.editbox then
 				--show them both
@@ -722,6 +748,63 @@ function NotGrid:InitializeMenu()
 		end
 	end
 	NotGridMenuConflictHandler()
+end
+
+-------------------
+-- Choice Picker --
+-------------------
+
+function NotGrid:ShowChoicePicker(anchor)
+	local f = NotGridMenuChoicePicker
+	if not f then
+		f = CreateFrame("Frame", "NotGridMenuChoicePicker", NotGridOptionsMenu)
+		f:SetWidth(180)
+		f:SetFrameLevel(NotGridOptionsMenu:GetFrameLevel() + 5)
+		f:SetBackdrop({bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16, insets = {left = 4, right = 4, top = 4, bottom = 4}})
+		f:SetBackdropColor(0, 0, 0, 1)
+		f.buttons = {}
+		for i = 1, 4 do
+			local button = CreateFrame("Button", nil, f)
+			button:SetWidth(160)
+			button:SetHeight(24)
+			button:SetPoint("TOPLEFT", 10, -8 - (i - 1) * 24)
+			button:SetHighlightTexture("Interface/Buttons/UI-Listbox-Highlight", "ADD")
+			button.text = button:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+			button.text:SetPoint("LEFT", 0, 0)
+			button:SetScript("OnClick", function()
+				NotGridOptions[f.key] = this.value
+				NotGridOptionChange()
+				self:RefreshChoicePicker()
+			end)
+			f.buttons[i] = button
+		end
+	end
+	f.key = anchor.choice.key
+	f.options = anchor.choice.options
+	f:SetHeight(16 + table.getn(f.options) * 24)
+	f:ClearAllPoints()
+	f:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -8, 0)
+	self:RefreshChoicePicker()
+	NotGridMenuTexturePicker:Hide()
+	NotGridMenuSliderContainer:Hide()
+	NotGridMenuEditBoxContainer:Hide()
+	NotGridMenuPositionBoxContainer:Hide()
+	f:Show()
+end
+
+function NotGrid:RefreshChoicePicker()
+	local f = NotGridMenuChoicePicker
+	for i,button in ipairs(f.buttons) do
+		local option = f.options[i]
+		if option then
+			button.value = option.value
+			local selected = NotGridOptions[f.key] == option.value
+			button.text:SetText((selected and "|cff00ff00> |r" or "  ") .. option.text)
+			button:Show()
+		else
+			button:Hide()
+		end
+	end
 end
 
 ------------
@@ -926,7 +1009,7 @@ function NotGrid:InitializeTexturePicker()
 	f.apply:SetWidth(80)
 	f.apply:SetHeight(22)
 	f.apply:SetPoint("BOTTOMRIGHT", -12, 10)
-	f.apply:SetText(APPLY)
+	f.apply:SetText(L["Apply"])
 	f.apply:SetScript("OnClick", function() self:ApplyTexture(f.edit:GetText()) end)
 	f:SetScript("OnHide", function() f.edit:ClearFocus() end)
 	f:Hide()
@@ -1088,6 +1171,7 @@ end
 --------------------
 
 function NotGrid:ScrollHandler() --arg1 is either -1 or 1 depending on scolling down or up
+	if NotGridMenuChoicePicker then NotGridMenuChoicePicker:Hide() end
 	if not arg1 then arg1 = 0 end
 	local menucount = getn(menuarray)
 	local offset = NotGridOptionsMenu.offset
