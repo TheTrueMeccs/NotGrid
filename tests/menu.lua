@@ -45,6 +45,8 @@ end
 getglobal, getn = function(name) return _G[name] end, table.getn
 function UnitClass() return "Priest", "PRIEST" end
 function GetCVar() return nil end
+function UnitName() return "Player" end
+function GetRealmName() return "Test Realm" end
 SlashCmdList = {}
 local translations, language = {}, "enUS"
 local locale = setmetatable({CombatEvents = {}}, {__index = function(_, key)
@@ -62,6 +64,7 @@ local source = string.gsub(read("core.lua"), "in L.CombatEvents do", "in pairs(L
 assert(loadstring(source))()
 source = string.gsub(read("options.lua"), "in DefaultOptions do", "in pairs(DefaultOptions) do")
 assert(loadstring(source))()
+assert(loadfile("profiles.lua"))()
 local menuSource = string.gsub(read("menus.lua"), "in menuarray do", "in ipairs(menuarray) do")
 menuSource = string.gsub(menuSource, "in {up = f.upb, down = f.downb, left = f.leftb, right = f.rightb} do", "in pairs({up = f.upb, down = f.downb, left = f.leftb, right = f.rightb}) do")
 
@@ -72,9 +75,11 @@ for _, code in ipairs({"enUS", "ruRU"}) do
 	UIParent, GameTooltip = CreateFrame("Frame", "UIParent"), CreateFrame("GameTooltip", "GameTooltip")
 	APPLY = nil
 	NotGridOptions = {}
+	NotGridProfiles = nil
 	assert(loadstring(menuSource))()
 	local configured, refreshed, registered = false, false, {}
 	function NotGrid:ConfigUnitFrames() configured = true end
+	function NotGrid:RestoreProfilePosition() end
 	function NotGrid:RefreshUnitFrames() refreshed = true end
 	function NotGrid:RegisterEvent(event) registered[event] = true end
 	function NotGrid:ScheduleRepeatingEvent() end
@@ -84,14 +89,22 @@ for _, code in ipairs({"enUS", "ruRU"}) do
 	assert(picker.apply.text == (code == "ruRU" and "Применить" or "Apply"))
 	assert(not picker.shown and table.getn(picker.buttons) == 5)
 	NotGridOptionsMenu:Show()
-	local anchorRow, growthRow
+	local anchorRow, growthRow, profilesRow
 	for _, f in pairs(_G) do
 		if type(f) == "table" and f.choice then
 			if f.choice.key == "debuffanchor" then anchorRow = f end
 			if f.choice.key == "debuffgrowth" then growthRow = f end
 		end
+		if type(f) == "table" and f.profiles == true then profilesRow = f end
 	end
 	assert(anchorRow and growthRow)
+	assert(profilesRow)
+	local showProfiles, opened = NotGrid.ShowProfiles, 0
+	function NotGrid:ShowProfiles() opened = opened + 1 end
+	fire(profilesRow, "OnClick")
+	SlashCmdList.NOTGRID("profiles")
+	assert(opened == 2, "Profiles must be reachable from the menu and slash command")
+	NotGrid.ShowProfiles = showProfiles
 	fire(anchorRow, "OnEnter")
 	assert(NotGridMenuChoicePicker.shown and NotGridMenuChoicePicker.key == "debuffanchor")
 	fire(growthRow, "OnEnter")

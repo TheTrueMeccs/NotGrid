@@ -10,8 +10,6 @@ function NotGrid:OnInitialize()
 	self.Compost = AceLibrary("Compost-2.0")
 	self.UnitFrames = {}
 	--
-	 self.inCombat = false  -- Added this line to track combat state
-	 --
 	self.IdenticalUnits = {} -- will hold pairs of party/player/raidids that are the same effective unit. For use with rosterlib & healcomm stuff
 	--proximity stuff
 	self.ProximityVars = {} -- will hold vars related to proximity handling. Mostly world map stuff
@@ -22,10 +20,10 @@ function NotGrid:OnInitialize()
 end
 
 function NotGrid:OnEnable()
-	self.o = NotGridOptions -- Need to wait for addon to be fully initialized and saved variables loaded before I set this
-	self:SetDefaultOptions() -- if NotGridOptions is empty(no saved variables) this will fill it up with defaults
+	self:InitializeProfiles()
 	self:DoDropDown()
 	self:ConfigUnitFrames()
+	self:RestoreProfilePosition()
 	--proximity stuff
 	self:RegisterEvent("ACTIONBAR_SLOT_CHANGED", "GetFortyYardSpell")
 	for key in L.CombatEvents do
@@ -57,9 +55,6 @@ function NotGrid:OnEnable()
 	self:RegisterEvent("UNIT_STATS", "UNIT_MAIN")
 	-- Aura changes (for druid forms)
 	self:RegisterEvent("UNIT_AURA", "UNIT_MAIN")
-   -- Combat state tracking
-    self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnEnterCombat")
-    self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnLeaveCombat")
 	self:RefreshUnitFrames()
 end
 
@@ -107,33 +102,6 @@ function NotGrid:UNIT_RAID_TARGET(unitid)
 		end
 	end
 
-end
-
-function NotGrid:OnEnterCombat()
-    self.inCombat = true
-	local f = self.UnitFrames
-    -- Hide buff icons 9, 10, 11 for all units
-    for unitid, frame in pairs(f) do
-        if frame and UnitExists(unitid) then
-            for i = 9, 11 do
-                local f = frame.healthbar["trackingicon"..i]
-                if f then
-                    f:Hide()
-                end
-            end
-        end
-    end
-end
-
-function NotGrid:OnLeaveCombat()
-    self.inCombat = false
-	local f = self.UnitFrames
-    -- Update auras for all units to restore buff icons 9, 10, 11
-    for unitid, frame in pairs(f) do
-        if frame and UnitExists(unitid) then
-            self:UNIT_AURA(unitid)
-        end
-    end
 end
 
 ---------------
@@ -391,25 +359,13 @@ function NotGrid:UNIT_AURA(unitid)
 	local f = self.UnitFrames[unitid]
 	if not f then return end
 
-	local auratable = self.Compost:Acquire() -- I only care about buffname for buffs -- reset every time
 	local shown = 0
 	f.debuffType = nil
 	local auraunit = o.configmode and "player" or unitid
 
-	if UnitExists(auraunit) then
-		--get buff info -- loop through every buff and adds info to table
-		local bi = 1
-		while (UnitBuff(auraunit,bi) ~= nil) do
-			self.Gratuity:SetUnitBuff(auraunit,bi)
-			local buffname = self.Gratuity:GetLine(1)
-			if buffname then
-				auratable[buffname] = true
-			end
-			bi = bi + 1;
-		end
-
+	if o.showdebufficons and UnitExists(auraunit) then
 		-- Display real debuff textures in aura order; the first shown type owns the border.
-		if o.configmode and o.showdebufficons then
+		if o.configmode then
 			for _,debuff in ipairs(previewDebuffs) do
 				if shown < (f.debuffIconLimit or 0) and self:ShouldShowDebuff(debuff.type) then
 					shown = shown + 1
@@ -421,58 +377,18 @@ function NotGrid:UNIT_AURA(unitid)
 			while true do
 				local texture, applications, spelltype = UnitDebuff(auraunit,di)
 				if not texture then break end
-				if o.showdebufficons then
-					if shown < (f.debuffIconLimit or 0) and self:ShouldShowDebuff(spelltype) then
-						shown = shown + 1
-						self:SetDebuffIcon(f, shown, texture, applications, spelltype)
-					end
-				else
-					-- Preserve the legacy aura indicators when the column is disabled.
-					self.Gratuity:SetUnitDebuff(auraunit,di)
-					local debuffname = self.Gratuity:GetLine(1)
-					if debuffname then auratable[debuffname] = true end
-					if spelltype then auratable[spelltype] = true end
+				if shown < (f.debuffIconLimit or 0) and self:ShouldShowDebuff(spelltype) then
+					shown = shown + 1
+					self:SetDebuffIcon(f, shown, texture, applications, spelltype)
 				end
 				di = di + 1
 			end
 		end
-
-        for i=1,11 do -- Changed from 8 to 11 as we've added Buff Icon 1,2 and 3 (9th, 10th, 11th Icon)
-            local f = f.healthbar["trackingicon"..i]
-            
-            -- Hide icons 9, 10, 11 during combat
-            if self.inCombat and (i == 9 or i == 10 or i == 11) then
-                f:Hide()
-            elseif self:CheckAura(i,auratable) then
-                if self.o["trackingicon"..i.."invert"] then
-                    f:Hide()
-                else
-                    f:Show()
-                end
-            else
-                if self.o["trackingicon"..i.."invert"] then
-                    f:Show()
-                else
-                    f:Hide()
-                end
-            end
-        end
-	else
-		for i = 1, 11 do f.healthbar["trackingicon"..i]:Hide() end
 	end
 	for i = shown + 1, table.getn(f.debuffIcons) do
 		f.debuffIcons[i]:Hide()
 	end
-    self.Compost:Reclaim(auratable)
 	self:UNIT_BORDER(unitid)
-end
-
-function NotGrid:CheckAura(i, auratable)
-	for _,text in ipairs(self.o["trackingicon"..i]) do
-		if auratable[text] then
-			return true
-		end
-	end
 end
 
 -----------------
@@ -745,6 +661,13 @@ end
 -- Blizz Events
 
 function NotGrid:PLAYER_ENTERING_WORLD() -- when they login,reloadui,or zone in/out of instances
+	if self.profileInitializationPending then
+		self:InitializeProfiles()
+		if not self.profileInitializationPending then
+			self:ConfigUnitFrames()
+			self:RestoreProfilePosition()
+		end
+	end
 	if self.o.versionchecking then
 		--SendAddonMessage("NotGrid", self.o.version, "GUILD")
 		--SendAddonMessage("NotGrid", self.o.version, "BATTLEGROUND")

@@ -18,6 +18,7 @@ local menuarray = {
 	{text = L["Config Mode"],
 	toggle = "configmode",
 	},
+	{text = L["Profiles"], profiles = true},
 
 	{text = "",},
 
@@ -261,126 +262,6 @@ local menuarray = {
 	{text = L["Show Poison Debuffs"], toggle = "debuffshowpoison"},
 	{text = L["Show Other Debuffs"], toggle = "debuffshowother"},
 	{text = ""},
-	{text = L["Icon Size"],
-	slider = {
-		key = "unittrackingiconsize",
-		minval = 1,
-		maxval = 30,
-		},
-	},
-	{text = L["Top Left Icon"],
-	toggle = "trackingicon1invert",
-	editbox = {
-		key = "trackingicon1",
-		},
-	color = {
-		key = "trackingicon1color",
-		},
-	tooltip = L["icon_tooltip"],
-	},
-	{text = L["Top Icon"],
-	toggle = "trackingicon2invert",
-	editbox = {
-		key = "trackingicon2",
-		},
-	color = {
-		key = "trackingicon2color",
-		},
-	tooltip = L["icon_tooltip"],
-	},
-	{text = L["Top Right Icon"],
-	toggle = "trackingicon3invert",
-	editbox = {
-		key = "trackingicon3",
-		},
-	color = {
-		key = "trackingicon3color",
-		},
-	tooltip = L["icon_tooltip"],
-	},
-	{text = L["Right Icon"],
-	toggle = "trackingicon4invert",
-	editbox = {
-		key = "trackingicon4",
-		},
-	color = {
-		key = "trackingicon4color",
-		},
-	tooltip = L["icon_tooltip"],
-	},
-	{text = L["Bottom Right Icon"],
-	toggle = "trackingicon5invert",
-	editbox = {
-		key = "trackingicon5",
-		},
-	color = {
-		key = "trackingicon5color",
-		},
-	tooltip = L["icon_tooltip"],
-	},
-	{text = L["Bottom Icon"],
-	toggle = "trackingicon6invert",
-	editbox = {
-		key = "trackingicon6",
-		},
-	color = {
-		key = "trackingicon6color",
-		},
-	tooltip = L["icon_tooltip"],
-	},
-	{text = L["Bottom Left Icon"],
-	toggle = "trackingicon7invert",
-	editbox = {
-		key = "trackingicon7",
-		},
-	color = {
-		key = "trackingicon7color",
-		},
-	tooltip = L["icon_tooltip"],
-	},
-	{text = L["Left Icon"],
-	toggle = "trackingicon8invert",
-	editbox = {
-		key = "trackingicon8",
-		},
-	color = {
-		key = "trackingicon8color",
-		},
-	tooltip = L["icon_tooltip"],
-	},
-	{text = L["Buff 1 Icon"],
-	toggle = "trackingicon9invert",
-	editbox = {
-		key = "trackingicon9",
-		},
-	color = {
-		key = "trackingicon9color",
-		},
-	tooltip = L["icon_ooc_tooltip"],
-	},
-	{text = L["Buff 2 Icon"],
-	toggle = "trackingicon10invert",
-	editbox = {
-		key = "trackingicon10",
-		},
-	color = {
-		key = "trackingicon10color",
-		},
-	tooltip = L["icon_ooc_tooltip"],
-	},
-	{text = L["Buff 3 Icon"],
-	toggle = "trackingicon11invert",
-	editbox = {
-		key = "trackingicon11",
-		},
-	color = {
-		key = "trackingicon11color",
-		},
-	tooltip = L["icon_ooc_tooltip"],
-	},
-	-- end of icons --
-	{text = "",},
-
 	{text = L["Healcomm Bar"],
 	toggle = "showhealcommbar",
 	color = {
@@ -600,6 +481,7 @@ function NotGrid:InitializeMenu()
 		fb.editbox = val.editbox
 		fb.texture = val.texture
 		fb.choice = val.choice
+		fb.profiles = val.profiles
 		--fb.color = val.color
 		fb.tooltip = val.tooltip
 		fb.reloadui = val.reloadui
@@ -637,6 +519,10 @@ function NotGrid:InitializeMenu()
 		end
 
 		fb:SetScript("OnClick", function()
+			if this.profiles then
+				self:ShowProfiles()
+				return
+			end
 			if this.choice then
 				self:ShowChoicePicker(this)
 				return
@@ -683,13 +569,7 @@ function NotGrid:InitializeMenu()
 				--show them both
 			elseif this.editbox then
 				NotGridMenuEditBox.key = this.editbox.key
-				if type(NotGridOptions[this.editbox.key]) == "table" then -- for tracking icons
-					NotGridMenuEditBox:SetText(table.concat(NotGridOptions[this.editbox.key],"/")) -- gfind and table.concat seem to have problems with | character so we use /
-					NotGridMenuEditBox.istable = true
-				else
-					NotGridMenuEditBox:SetText(NotGridOptions[this.editbox.key])
-					NotGridMenuEditBox.istable = false
-				end
+				NotGridMenuEditBox:SetText(NotGridOptions[this.editbox.key])
 				NotGridMenuEditBoxContainer:ClearAllPoints()
 				NotGridMenuEditBoxContainer:SetPoint("TOPRIGHT",this,"TOPLEFT",-20,0)
 				NotGridMenuEditBoxContainer:Show()
@@ -877,23 +757,12 @@ function NotGrid:InitializeEditBox()
 	f.e:EnableKeyboard()
 	f.e:SetScript("OnEnterPressed", function()
 		this:ClearFocus()
-		if this.istable then
-			NotGridOptions[this.key] = {} -- should probably compost it but will rarely get called
-			for text in string.gfind(this:GetText(), "([^/]+)") do -- There are issues with using | as a seperator, not sure why
-				table.insert(NotGridOptions[this.key], text)
-			end
-		else
-			NotGridOptions[this.key] = this:GetText()
-		end
+		NotGridOptions[this.key] = this:GetText()
 		NotGridOptionChange()
 	end)
 	f.e:SetScript("OnEscapePressed", function()
 		this:ClearFocus()
-		if this.istable then
-			this:SetText(table.concat(NotGridOptions[this.key],"/"))
-		else
-			this:SetText(NotGridOptions[this.key])
-		end
+		this:SetText(NotGridOptions[this.key])
 	end)
 end
 

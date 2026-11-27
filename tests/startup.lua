@@ -21,6 +21,8 @@ assert(loadstring(source))()
 source = string.gsub(read("options.lua"), "in DefaultOptions do", "in pairs(DefaultOptions) do")
 assert(loadstring(source))()
 
+assert(loadfile("profiles.lua"))()
+function GetRealmName() return "Test Realm" end
 NotGrid.Compost = {Acquire = function(_, ...) return {...} end, Reclaim = function() end}
 NotGrid.IdenticalUnits = {}
 NotGrid.UnitFrames = {}
@@ -91,6 +93,7 @@ local function hideAndClear()
 	end
 end
 local function enable()
+	NotGridProfiles = nil
 	NotGridOptions = {versionchecking = false, showblizzframes = false}
 	hideAndClear()
 	NotGrid:OnEnable()
@@ -146,6 +149,7 @@ assert(next(NotGrid.IdenticalUnits) == nil)
 
 -- Explicit saved visibility choices remain respected on reload and world entry.
 NotGridOptions = {versionchecking = false, showwhilesolo = false, showinparty = false}
+NotGridProfiles = nil
 NotGrid:OnEnable()
 expectShown({})
 NotGrid:PLAYER_ENTERING_WORLD()

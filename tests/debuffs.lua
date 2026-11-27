@@ -19,11 +19,23 @@ assert(loadfile("frames.lua"))()
 -- Vanilla allows tables as generic-for iterators; standard Lua 5.1 needs pairs.
 local source = string.gsub(read("options.lua"), "in DefaultOptions do", "in pairs(DefaultOptions) do")
 local defaults = assert(loadstring(source .. "\nreturn DefaultOptions"))()
-NotGridOptions = {trackingicon3 = {"Magic"}, unitfont = "Custom.ttf"}
+assert(loadfile("profiles.lua"))()
+function GetRealmName() return "Test Realm" end
+NotGridOptions = {unitfont = "Custom.ttf", unittrackingiconsize = 9, unittrackingiconborder = 2, unittrackingiconbordercolor = {1, 0, 0, 1}}
+for i = 1, 11 do
+	NotGridOptions["trackingicon" .. i] = {"Old aura"}
+	NotGridOptions["trackingicon" .. i .. "invert"] = true
+	NotGridOptions["trackingicon" .. i .. "color"] = {1, 0, 0}
+end
 NotGrid.o = NotGridOptions
 NotGrid:SetDefaultOptions()
 assert(NotGridOptions.unitfont == "Custom.ttf")
-assert(NotGridOptions.trackingicon3[1] == "Magic")
+for key in pairs(NotGridOptions) do
+	assert(not string.find(key, "trackingicon"), "Retired indicator settings must be removed: " .. key)
+end
+for key in pairs(defaults) do
+	assert(not string.find(key, "trackingicon"), "Retired indicator defaults must not return: " .. key)
+end
 assert(NotGridOptions.showdebufficons and NotGridOptions.debuffborder)
 assert(NotGridOptions.debuffanchor == "TOPLEFT" and NotGridOptions.debuffgrowth == "DOWN")
 NotGridOptions.debuffshowpoison = false
@@ -44,7 +56,10 @@ local methods = {}
 local function object()
 	return setmetatable({shown = false, level = 1}, {__index = methods})
 end
-function CreateFrame(_, _, parent) local f = object(); f.parent = parent; return f end
+function CreateFrame(_, name, parent)
+	assert(not name or not string.find(name, "trackingicon"), "Do not create retired indicator frames")
+	local f = object(); f.parent = parent; return f
+end
 function methods:CreateTexture() return object() end
 function methods:CreateFontString() return object() end
 function methods:EnableMouse(enabled) self.mouse = enabled end
@@ -67,6 +82,17 @@ function methods:Show() self.shown = true end
 function methods:Hide() self.shown = false end
 function methods:SetBackdropBorderColor(...) self.color = {...} end
 function methods:SetVertexColor(...) self.color = {...} end
+function methods:SetScript(event, handler)
+	self.scripts = self.scripts or {}
+	self.scripts[event] = handler
+end
+for _, name in ipairs({"SetAllPoints", "SetAlpha", "SetFrameStrata", "RegisterForClicks", "RegisterForDrag", "RegisterEvent"}) do
+	methods[name] = function() end
+end
+function GetTime() return 0 end
+
+local constructed = NotGrid:CreateUnitFrame("party2")
+assert(#constructed.debuffIcons == 8 and constructed.raidicon and constructed.roleIcon)
 
 DebuffTypeColor = {
 	Magic = {r = 0.2, g = 0.6, b = 1}, Curse = {r = 0.6, g = 0, b = 1},
@@ -81,31 +107,20 @@ function UnitMana() return mana end
 function UnitManaMax() return 100 end
 function UnitPowerType() return 0 end
 function UnitIsDeadOrGhost() return false end
-function UnitBuff(unit, index)
-	local aura = units[unit].buffs[index]
-	if aura then return aura.texture end
-end
+function UnitBuff() error("Debuff updates must not scan buffs") end
 function UnitDebuff(unit, index)
+	assert(o.showdebufficons, "Disabled debuff icons must not scan auras or restore old indicators")
 	local aura = units[unit].debuffs[index]
 	if aura then return aura.texture, aura.stacks or 1, aura.type end
 end
-local currentName, acquired, reclaimed = nil, 0, 0
-NotGrid.Gratuity = {
-	SetUnitBuff = function(_, unit, index) currentName = units[unit].buffs[index].name end,
-	SetUnitDebuff = function(_, unit, index) currentName = units[unit].debuffs[index].name end,
-	GetLine = function() return currentName end,
-}
-NotGrid.Compost = {
-	Acquire = function() acquired = acquired + 1; return {} end,
-	Reclaim = function() reclaimed = reclaimed + 1 end,
-}
+NotGrid.Gratuity = setmetatable({}, {__index = function() error("Debuff updates must not scan tooltip text") end})
+NotGrid.Compost = setmetatable({}, {__index = function() error("Debuff updates must not allocate legacy aura tables") end})
 NotGrid.Banzai = {GetUnitAggroByUnitId = function() return aggro end}
 NotGrid.UnitFrames = {}
 local function createUnit(unit)
 	local f = object()
 	f.healthbar, f.incheal, f.border = object(), object(), object()
 	f.border.middleart = object()
-	for i = 1, 11 do f.healthbar["trackingicon" .. i] = object() end
 	NotGrid:CreateDebuffIcons(f)
 	NotGrid:ConfigDebuffIcons(f)
 	NotGrid.UnitFrames[unit] = f
@@ -130,7 +145,6 @@ local function update() NotGrid:UNIT_AURA("player") end
 units.player.buffs = {{name = "Rejuvenation", texture = "HoT"}, {name = "Power Word: Fortitude", texture = "Fortitude"}}
 update()
 assert(shown(f) == 0 and matches(f.border.color, o.unitbordercolor))
-assert(f.healthbar.trackingicon1.shown and f.healthbar.trackingicon9.shown)
 
 units.player.debuffs = {
 	{name = "Magic spell", texture = "MagicIcon", type = "Magic", stacks = 3},
@@ -145,7 +159,6 @@ assert(f.debuffIcons[2].count.text == "")
 assert(matches(f.border.color, DebuffTypeColor.Magic))
 assert(matches(f.debuffIcons[1].color, DebuffTypeColor.Magic))
 assert(matches(f.border.middleart.color, DebuffTypeColor.Magic))
-assert(not f.healthbar.trackingicon3.shown, "Do not duplicate debuffs in legacy corners")
 o.debuffshowmagic = false
 update()
 assert(shown(f) == 3 and f.debuffType == "Poison")
@@ -251,12 +264,16 @@ o.debuffshowmagic = true
 units.player.debuffs = {{name = "One", texture = "One", type = "Magic"}, {name = "Two", texture = "Two", type = "Magic"}}
 update()
 assert(shown(f) == 1)
-NotGrid.inCombat = true
+-- The debuff frame's actual UNIT_AURA handler works without combat-only buff frames.
+NotGrid.UnitFrames.party2 = constructed
+NotGrid:ConfigDebuffIcons(constructed)
+units.party2 = {name = "Constructed", exists = true, debuffs = {{texture = "ActualFrame", type = "Magic"}}}
+this, event, arg1 = constructed, "UNIT_AURA", "party2"
+constructed.scripts.OnEvent()
+assert(shown(constructed) == 1 and constructed.debuffIcons[1].texture.texturePath == "ActualFrame")
+this, event, arg1 = nil, nil, nil
 update()
-assert(shown(f) == 1 and not f.healthbar.trackingicon9.shown)
-NotGrid.inCombat = false
-update()
-assert(f.healthbar.trackingicon9.shown)
+assert(shown(f) == 1)
 
 -- Per-unit state must not leak when a raid slot disappears or changes occupants.
 units.party1 = {name = "Other", exists = true, buffs = {}, debuffs = {}}
@@ -272,11 +289,12 @@ assert(shown(f) == 0 and f.debuffType == nil)
 NotGrid:UNIT_AURA("unknown")
 
 o.showdebufficons = false
+NotGrid:SetDefaultOptions()
+assert(o.showdebufficons == false, "Saved disabled state must survive removal of old indicators")
 units.player.debuffs = {{name = "Mortal Strike", texture = "MS", type = "Magic"}}
 update()
 assert(shown(f) == 0 and f.debuffType == nil)
-assert(f.healthbar.trackingicon3.shown and f.healthbar.trackingicon7.shown, "Legacy tracking must be restored when disabled")
-assert(acquired == reclaimed, "Aura tables must always be reclaimed")
+assert(matches(f.border.color, o.unitbordercolor), "Disabling icons must also clear their type border")
 
 -- Config Mode shows sample debuffs even on party/raid frames with no real unit.
 units.raid40 = {name = "Empty raid slot", exists = false, buffs = {}, debuffs = {}}
@@ -289,6 +307,10 @@ assert(shown(preview) == 5 and preview.debuffType == "Magic")
 assert(preview.debuffIcons[1].count.text == 2 and preview.debuffIcons[5].count.text == 3)
 assert(matches(preview.border.color, DebuffTypeColor.Magic))
 assert(matches(preview.debuffIcons[5].color, DebuffTypeColor.none))
+o.showdebufficons = false
+NotGrid:UNIT_AURA("raid40")
+assert(shown(preview) == 0 and preview.debuffType == nil and matches(preview.border.color, o.unitbordercolor))
+o.showdebufficons = true
 o.debuffmarginleft, o.debuffmargintop, o.debuffspacing = 4, 6, 3
 NotGrid:ConfigDebuffIcons(preview)
 NotGrid:UNIT_AURA("raid40")
@@ -323,6 +345,9 @@ local controls = 0
 for _, entry in ipairs(menu) do
 	if entry.slider then assert(type(defaults[entry.slider.key]) == "number", entry.slider.key) end
 	local key = entry.toggle or (entry.slider and entry.slider.key) or (entry.choice and entry.choice.key)
+	for _, candidate in ipairs({entry.toggle or "", entry.slider and entry.slider.key or "", entry.editbox and entry.editbox.key or "", entry.color and entry.color.key or ""}) do
+		assert(not string.find(candidate, "trackingicon"), "Retired indicator controls must not return")
+	end
 	if key and (string.find(key, "^debuff") or key == "showdebufficons") then
 		controls = controls + 1
 		assert(defaults[key] ~= nil)
@@ -398,6 +423,7 @@ function NotGrid:DoDropDown() end
 function NotGrid:GetIdenticalUnits() end
 function NotGrid:PositionFrames() end
 function NotGrid:BlizzFrameHandler() end
+function NotGrid:RestoreProfilePosition() end
 function NotGrid:UNIT_MAIN() end
 function NotGrid:UNIT_RAID_TARGET() end
 function NotGrid:ConfigUnitFrames()
@@ -406,4 +432,4 @@ end
 o.showdebufficons, o.debuffborder, o.debuffshowmagic = true, true, true
 NotGrid:OnEnable()
 assert(shown(f) == 1 and f.debuffType == "Magic" and matches(f.border.color, DebuffTypeColor.Magic))
-print("PASS: debuff textures/stacks, filters and borders, all 16 corner/growth layouts, margins and fitting, Config Mode and picker clicks, combat, unit reuse, legacy buffs, defaults and menu wiring.")
+print("PASS: debuff textures/stacks, filters and borders, all 16 layouts, Config Mode and picker clicks, real frame aura events, unit reuse, retired-setting cleanup and menu wiring without legacy indicator frames or aura scans.")

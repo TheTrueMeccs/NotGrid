@@ -42,16 +42,40 @@ end
 -- Main Check --
 ----------------
 
+local unitXPFunction, unitXPReady
+
+local function CheckUnitXPProximity(unitid)
+	local fn = UnitXP
+	if type(fn) ~= "function" then return end
+	if fn ~= unitXPFunction then
+		unitXPFunction, unitXPReady = fn, false
+		-- UnitXP exists in the base client too. Only the optional extension
+		-- understands these commands; probe it once without leaking Lua errors.
+		local ok, inSight = pcall(fn, "inSight", "player", "player")
+		if ok and inSight == true then
+			local distanceOK, distance = pcall(fn, "distanceBetween", "player", "player")
+			unitXPReady = distanceOK and type(distance) == "number" and distance == 0
+		end
+	end
+	if not unitXPReady then return end
+	local ok, inSight = pcall(fn, "inSight", "player", unitid)
+	if not ok or type(inSight) ~= "boolean" then return end
+	if not inSight then return 2 end
+	local distanceOK, distance = pcall(fn, "distanceBetween", "player", unitid)
+	if distanceOK and type(distance) == "number" and distance >= 0 and distance == distance and distance ~= math.huge then
+		if distance <= 40 then return 1 else return 2 end
+	end
+end
+
 function NotGrid:CheckProximity(unitid) -- return 1=confirmed_true, 2=confirmed_false, and no_response/false/nil means we can't confirm either way
 	if UnitExists(unitid) and UnitIsVisible(unitid) then
 		--check these scenarios first even if the player has check with map toggled
 		if UnitIsUnit(unitid, "player") then --unitisplayer, 0 yards
 			return 1
-		elseif UnitXP and not UnitXP("inSight", "player", unitid) then -- use UnitXP to check if unit is in sight
-			return 2
-		elseif UnitXP and UnitXP("distanceBetween", "player", unitid) <= 40 then
-			return 1
-		elseif CheckInteractDistance(unitid, 3) then -- duel range, 10 yards
+		end
+		local extendedRange = CheckUnitXPProximity(unitid)
+		if extendedRange then return extendedRange end
+		if CheckInteractDistance(unitid, 3) then -- duel range, 10 yards
 			return 1
 		elseif CheckInteractDistance(unitid, 2) then -- trade and inspect range (1 is the same as 2 with patch 1.12), 11.11 yards
 			return 1

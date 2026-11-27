@@ -104,17 +104,6 @@ function NotGrid:CreateUnitFrame(unitid,raidindex)
 	f.healcommtext = f.incheal:CreateFontString("$parenthealcommtext", "OVERLAY", "GameFontHighlight")
 	self:CreateDebuffIcons(f)
 
-	-- EDIT I VALUE TO REPRESENT TOTAL NUMBER OF RAID FRAME ICONS
-	for i=1,11 do -- changed from 8 to 11 to accomodate Buff Icon 1,2,3
-				f.healthbar["trackingicon"..i] = CreateFrame("Frame","$parenttrackingicon"..i,f.healthbar) -- easier to work with digits than topleft/topright/etc..
-				f.healthbar["trackingicon"..i]:SetFrameLevel(f.namehealthtext:GetParent():GetFrameLevel() + 1)
-				f.healthbar["trackingicon"..i]:SetFrameStrata("MEDIUM")
-				-- Adding spell icon texture
-				f.healthbar["trackingicon"..i].spellicon = f.healthbar["trackingicon"..i]:CreateTexture("$parentspellicon", "BACKGROUND")
-				f.healthbar["trackingicon"..i].spellicon:SetAllPoints()
-				f.healthbar["trackingicon"..i].spellicon:SetAlpha(0.3) -- Translucancy for icon background
-	end
-
 	f.raidicon = CreateFrame("Frame", nil, f.healthbar)
 	f.raidicon.texture = f.raidicon:CreateTexture(nil,"OVERLAY")
 
@@ -149,6 +138,7 @@ function NotGrid:CreateUnitFrame(unitid,raidindex)
 	f:SetScript("OnDragStop", function()
 		if self.o.draggable then
 			self.Container:StopMovingOrSizing()
+			self:SaveProfilePosition()
 		end
 	end)
 
@@ -428,29 +418,6 @@ function NotGrid:ConfigUnitFrames() -- this can get called on every setting chan
 			end
 		end
 		self:ConfigDebuffIcons(f)
-		for i,point in {"TOPLEFT", "TOP", "TOPRIGHT", "RIGHT", "BOTTOMRIGHT", "BOTTOM", "BOTTOMLEFT", "LEFT", "BOTTOM", "BOTTOM", "BOTTOM"} do
-			local fi = f.healthbar["trackingicon"..i]
-			fi:SetWidth(o.unittrackingiconsize)
-			fi:SetHeight(o.unittrackingiconsize)
-			fi:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", tile = true, tileSize = o.unittrackingiconsize, edgeSize = o.unittrackingiconborder})
-			fi:SetBackdropBorderColor(o.unittrackingiconbordercolor)
-			fi:SetBackdropColor(unpack(o["trackingicon"..i.."color"]))
-			fi:ClearAllPoints()
-			-- If tracking icon is Buff Icon 1, use the 9th position from the array (BOTTOM) and move it 10 pixels left on the X axis
-			if i == 9 then
-				-- this should be changed from -10 (static) to a dynamic value that represents the chosen icon size		
-				fi:SetPoint(point,-10,0)
-			elseif i == 10 then
-				-- this should be changed from -10 (static) to a dynamic value that represents the chosen icon size		
-				fi:SetPoint(point,0,0)
-			elseif i == 11 then
-				-- this should be changed from -10 (static) to a dynamic value that represents the chosen icon size		
-				fi:SetPoint(point,10,0)	
-			else
-				fi:SetPoint(point,0,0)
-			end
-			fi:Hide()
-		end
 	end
 end
 

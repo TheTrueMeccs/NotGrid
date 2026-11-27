@@ -24,9 +24,6 @@ local DefaultOptions = {
 	["unithealcommtextsize"] = 10,
 	["unithealcommtextoffx"] = 0,
 	["unithealcommtextoffy"] = -10,
-	["unittrackingiconsize"] = 6,
-	["unittrackingiconborder"] = 1,
-	["unittrackingiconbordercolor"] = {0,0,0,1},
 	["showdebufficons"] = true,
 	["debuffborder"] = true,
 	["debufficonsize"] = 10,
@@ -57,41 +54,6 @@ local DefaultOptions = {
 	["powerposition"] = 3, -- 1=top,2=bottom,3=left,4=right
 	["colorpowerbarbgbytype"] = false,
 	["unitpowerbarbgcolor"] = {0,0,0,0.1},
-
-	["trackingicon1"] = {"Rejuvenation","Regrowth","Renew",}, -- potentially be better to have the auraname/spelltype be the key, but that introduces other problems to work around
-	["trackingicon1invert"] = false,
-	["trackingicon1color"] = {0.37,0.83,0.38},
-	["trackingicon2"] = {"",},
-	["trackingicon2invert"] = false,
-	["trackingicon2color"] = {0.20,0.60,1.00},
-	["trackingicon3"] = {"Magic",},
-	["trackingicon3invert"] = false,
-	["trackingicon3color"] = {0.20,0.60,1.00},
-	["trackingicon4"] = {"Poison",},
-	["trackingicon4invert"] = false,
-	["trackingicon4color"] = {0.00,0.60,0},
-	["trackingicon5"] = {"Curse",},
-	["trackingicon5invert"] = false,
-	["trackingicon5color"] = {0.60,0.00,1.00},
-	["trackingicon6"] = {"Disease",},
-	["trackingicon6invert"] = false,
-	["trackingicon6color"] = {0.60,0.40,0},
-	["trackingicon7"] = {"Mortal Strike","Mortal Wound","Veil of Shadow","Curse of the Deadwood","Blood Fury","Wound Poison","Hex of Weakness",},
-	["trackingicon7invert"] = false,
-	["trackingicon7color"] = {0.80,0,0},
-	["trackingicon8"] = {"",},
-	["trackingicon8invert"] = false,
-	["trackingicon8color"] = {0.20,0.60,1.00},
-	["trackingicon9"] = {"Prayer of Fortitude","Power Word: Fortitude",}, -- BUFF TRACKER ICON 1 (OUT OF COMBAT ONLY)
-	["trackingicon9invert"] = false,
-	["trackingicon9color"] = {0.60,0.80,1.00}, -- Blue
-	["trackingicon10"] = {"Shadow Protection","Prayer of Shadow Protection",}, -- BUFF TRACKER ICON 3 (OUT OF COMBAT ONLY)
-	["trackingicon10invert"] = false,
-	["trackingicon10color"] = {1.00,0.20,1.00}, -- magenta
-	["trackingicon11"] = {"Divine Spirit","Prayer of Spirit",}, -- BUFF TRACKER ICON 2 (OUT OF COMBAT ONLY)
-	["trackingicon11invert"] = false,
-	["trackingicon11color"] = {1.0,1.00,1.00}, -- white
-
 	["trackaggro"] = true,
 	["aggrowarningcolor"] = {150/255,10/255,10/255,0.8},
 	["trackmana"] = true,
@@ -151,18 +113,29 @@ local DefaultOptions = {
 	["showmenuhint"] = true,
 }
 
+function NotGrid:CopyOptions(value)
+	if type(value) ~= "table" then return value end
+	local copy = {}
+	for key,item in pairs(value) do copy[key] = self:CopyOptions(item) end
+	return copy
+end
+
 function NotGrid:SetDefaultOptions() -- this will run on initialization and make sure everything is set. We can also use it if we wipe the NotGridOptions table and want to load it up with defaults
 	for key,value in DefaultOptions do
 		if not NotGridOptions[key] and not (not NotGridOptions[key] and type(NotGridOptions[key]) == "boolean") then -- if this wasn't set from the saved variable load
-			NotGridOptions[key] = value
+			NotGridOptions[key] = self:CopyOptions(value)
 		end
 	end
-	--if the current version is older than a commit that caused a config change, then set the affected configs back to default
-	if NotGridOptions.version < 1.112 and type(NotGridOptions.trackingicon1) ~= "table" then -- means they're using old aura handling and we need strings to be tables
-		for i=1,8 do
-			NotGridOptions["trackingicon"..i] = DefaultOptions["trackingicon"..i]
+	-- Drop retired aura-indicator settings while preserving current frame/debuff options.
+	for key in pairs(NotGridOptions) do
+		if type(key) == "string" and string.find(key, "^trackingicon%d+") then
+			NotGridOptions[key] = nil
 		end
 	end
+	NotGridOptions.unittrackingiconsize = nil
+	NotGridOptions.unittrackingiconborder = nil
+	NotGridOptions.unittrackingiconbordercolor = nil
+	-- Reset settings affected by older format changes.
 	if NotGridOptions.version < 1.106 and NotGridOptions.containerpoint ~= "CENTER" then -- means they used the old drag positioning and it will be set relative to TOPLEFT
 		NotGridOptions.containerpoint = DefaultOptions.containerpoint
 		NotGridOptions.containeroffx = DefaultOptions.containeroffx
@@ -182,10 +155,9 @@ SLASH_NOTGRID1 = "/notgrid"
 SLASH_NOTGRID2 =  "/ng"
 function SlashCmdList.NOTGRID(msg, editbox)
 	if msg == "reset" then
-		for key,value in DefaultOptions do
-			NotGridOptions[key] = value
-		end
-		ReloadUI() -- we have to reloadui to make the config menu update as well
+		NotGrid:ConfirmProfileAction("reset")
+	elseif msg == "profiles" or msg == "profile" then
+		NotGrid:ShowProfiles()
 	elseif msg == "grid" then
 		NotGrid.o.unithealthbartexture = "Interface\\AddOns\\NotGrid\\media\\GridGradient"
 		NotGrid.o.unithealthbarbgtexture = "Interface\\AddOns\\NotGrid\\media\\GridGradient"
